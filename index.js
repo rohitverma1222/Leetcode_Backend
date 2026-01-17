@@ -51,27 +51,56 @@ app.get('/api/problems', (req, res) => {
 
 const { exec } = require('child_process');
 
-// Cron job to sync data (runs every minute for testing)
-// To run daily at midnight, change back to '0 0 * * *'
-cron.schedule('0 0 * * *', async () => {
-    console.log('Running LeetCode data sync script...');
+// Function to run the sync script
+const runSync = (limit = null) => {
+    return new Promise((resolve, reject) => {
+        console.log(`Running LeetCode data sync script${limit ? ` with limit=${limit}` : ''}...`);
+        const scriptPath = path.join(__dirname, 'scripts', 'scrape-leetcode.js');
+        const command = `node ${scriptPath}${limit ? ` --limit=${limit}` : ''}`;
 
-    const scriptPath = path.join(__dirname, 'scripts', 'scrape-leetcode.js');
-
-    // Execute the scraper script
-    // We use --limit=10 for testing to avoid long runs every minute
-    exec(`node ${scriptPath} `, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`Error executing sync script: ${error.message}`);
-            return;
-        }
-        if (stderr) {
-            console.error(`Sync script stderr: ${stderr}`);
-        }
-        console.log(`Sync script output:\n${stdout}`);
-        console.log('Sync completed successfully.');
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error executing sync script: ${error.message}`);
+                return reject(error);
+            }
+            if (stderr) {
+                console.error(`Sync script stderr: ${stderr}`);
+            }
+            console.log(`Sync script output:\n${stdout}`);
+            console.log('Sync completed successfully.');
+            resolve(stdout);
+        });
     });
+};
+
+// API Endpoint to trigger sync (used by Vercel Cron)
+app.get('/api/sync', async (req, res) => {
+    const { limit } = req.query;
+    // Security check: Vercel Cron can send an Authorization header
+    const authHeader = req.headers['authorization'];
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('Unauthorized sync attempt');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        await runSync(limit);
+        res.json({ message: 'Sync completed successfully', limit: limit || 'none' });
+    } catch (error) {
+        res.status(500).json({ error: 'Sync failed', details: error.message });
+    }
 });
+
+// Local cron job for development (optional, can be disabled if only using Vercel)
+if (process.env.NODE_ENV !== 'production') {
+    cron.schedule('0 0 * * *', async () => {
+        try {
+            await runSync();
+        } catch (error) {
+            console.error('Local cron sync failed:', error);
+        }
+    });
+}
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
