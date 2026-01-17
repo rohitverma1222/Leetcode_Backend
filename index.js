@@ -77,11 +77,6 @@ const runSync = (limit = null) => {
 app.get('/api/sync', async (req, res) => {
     const { limit } = req.query;
     // Security check: Vercel Cron can send an Authorization header
-    const authHeader = req.headers['authorization'];
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        console.warn('Unauthorized sync attempt');
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
 
     try {
         await runSync(limit);
