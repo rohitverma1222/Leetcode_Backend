@@ -33,29 +33,44 @@ const writeData = (data) => {
     }
 };
 
-// API Endpoint to get problems
+// API Endpoint to get problems with optional rating filtering
 app.get('/api/problems', (req, res) => {
-    const problems = readData();
+    const { minRating, maxRating } = req.query;
+    let problems = readData();
+
+    if (minRating !== undefined || maxRating !== undefined) {
+        const min = (minRating !== undefined && minRating !== '') ? parseFloat(minRating) : -Infinity;
+        const max = (maxRating !== undefined && maxRating !== '') ? parseFloat(maxRating) : Infinity;
+        console.log(`Filtering problems: minRating=${min}, maxRating=${max}`);
+        problems = problems.filter(p => p.Rating >= min && p.Rating <= max);
+        console.log(`Filter complete. Found ${problems.length} problems.`);
+    }
+
     res.json(problems);
 });
 
-// Cron job to sync data (runs every day at midnight)
-// For testing, you can change this to '* * * * *' (every minute)
+const { exec } = require('child_process');
+
+// Cron job to sync data (runs every minute for testing)
+// To run daily at midnight, change back to '0 0 * * *'
 cron.schedule('0 0 * * *', async () => {
-    console.log('Running daily LeetCode data sync...');
-    try {
-        // This is a placeholder for actual LeetCode API sync logic
-        // For now, we'll just log that it's running.
-        // In a real scenario, you'd fetch from LeetCode and update data.json
-        const currentData = readData();
-        console.log(`Current problem count: ${currentData.length}`);
+    console.log('Running LeetCode data sync script...');
 
-        // Example: writeData(updatedData);
+    const scriptPath = path.join(__dirname, 'scripts', 'scrape-leetcode.js');
 
+    // Execute the scraper script
+    // We use --limit=10 for testing to avoid long runs every minute
+    exec(`node ${scriptPath} `, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Error executing sync script: ${error.message}`);
+            return;
+        }
+        if (stderr) {
+            console.error(`Sync script stderr: ${stderr}`);
+        }
+        console.log(`Sync script output:\n${stdout}`);
         console.log('Sync completed successfully.');
-    } catch (error) {
-        console.error('Error during sync:', error);
-    }
+    });
 });
 
 app.listen(PORT, () => {
